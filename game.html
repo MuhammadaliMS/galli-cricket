@@ -234,6 +234,8 @@ body.touch.bowling #typeBtn{display:grid;width:auto;min-width:54px;height:40px;p
 }
 @media (prefers-reduced-motion:reduce){#rotate .ph{animation:none}}
 @media (prefers-reduced-motion:reduce){#pop.anim{animation-duration:.01s;animation-delay:0s}}
+#card .hub{display:inline-block;margin:0 0 12px;font:700 11px var(--pixel);letter-spacing:.1em;color:var(--teal);text-decoration:none;border-bottom:2px solid currentColor;padding-bottom:2px}
+#card .hub:hover{color:var(--red)}
 </style>
 
 <canvas id="c" tabindex="0" aria-label="Gully cricket diorama"></canvas>
@@ -2014,6 +2016,7 @@ function updOverlayEls(dt) {
 /* ================= overlay cards ================= */
 function showIntro() {
   $('card').innerHTML = `
+    <a class="hub" href="https://muhammadalims.github.io/">← ALL STREET GAMES</a>
     <h2>GALLI <span>CRICKET</span></h2>
     <p class="lede">Two overs, three wickets. Pick a ground, then a side.</p>
     <h3>WHERE</h3>
