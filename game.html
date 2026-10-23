@@ -804,8 +804,10 @@ function updStumps(st, dt) {
 }
 
 /* ================= characters ================= */
-// clay figures: capsule limbs with knees and elbows, a round head with hair, ears, nose, eyes and brows
-const capCache = new Map(), sphCache = new Map();
+// clay figures, human proportions: a lathed torso that tapers from chest to waist, tapered limbs with
+// calves and forearms, skin below the sleeves, hands with thumbs, shoes with toes, a face with a jaw,
+// eye whites and a nose, and a few hairstyles. Pivots match the pose functions (hip, knees, shoulders, elbows).
+const capCache = new Map(), sphCache = new Map(), taperCache = new Map();
 function CAP(r, len, color, x, y, z, parent) {
   const k = r + '|' + len; let gm = capCache.get(k); if (!gm) { gm = new THREE.CapsuleGeometry(r, len, 6, 14); capCache.set(k, gm); }
   const m = new THREE.Mesh(gm, M(color)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
@@ -814,49 +816,82 @@ function SPH(r, color, x, y, z, parent, sx = 1, sy = 1, sz = 1, cast = true) {
   let gm = sphCache.get(r); if (!gm) { gm = new THREE.SphereGeometry(r, 20, 14); sphCache.set(r, gm); }
   const m = new THREE.Mesh(gm, M(color)); m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.castShadow = cast; m.receiveShadow = true; parent.add(m); return m;
 }
+function TAPER(rt, rb, h, color, x, y, z, parent) {
+  const k = rt + '|' + rb + '|' + h; let gm = taperCache.get(k); if (!gm) { gm = new THREE.CylinderGeometry(rt, rb, h, 16, 1); taperCache.set(k, gm); }
+  const m = new THREE.Mesh(gm, M(color)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
+}
+let torsoGeo = null;
+function torsoGeometry() {
+  if (!torsoGeo) torsoGeo = new THREE.LatheGeometry([[0.001, 0], [0.15, 0], [0.162, 0.07], [0.163, 0.18], [0.182, 0.31], [0.2, 0.42], [0.196, 0.5], [0.158, 0.57], [0.07, 0.615], [0.001, 0.62]].map(([r, y]) => new THREE.Vector2(r, y)), 22);
+  return torsoGeo;
+}
+const HAIRSTYLES = ['short', 'curly', 'buzz', 'short', 'wavy'];
+let personCount = 0;
 function person(o) {
   const g = new THREE.Group(); (o.parent || scene).add(g);
   const hip = new THREE.Group(); hip.position.y = 0.86; g.add(hip);
-  const hair = o.hair || '#3b2a20', sleeve = o.sleeve || o.shirt;
-  SPH(0.19, o.pants, 0, 0.02, 0, hip, 1.3, 0.75, 0.85);
+  const hair = o.hair || '#3b2a20', skin = o.skin, shirt = o.shirt, sleeve = o.sleeve || o.shirt;
+  const shorts = !!o.shin && o.shin === o.skin;          // shin shown as skin = shorts
+  const style = o.hairStyle || (o.pony ? 'pony' : HAIRSTYLES[personCount++ % HAIRSTYLES.length]);
+  // pelvis
+  SPH(0.18, o.pants, 0, 0.0, 0, hip, 1.0, 0.6, 0.74);
   const legs = [];
   for (const s of [-1, 1]) {
-    const L = new THREE.Group(); L.position.set(0.11 * s, -0.02, 0); hip.add(L);
-    CAP(0.085, 0.3, o.pants, 0, -0.22, 0, L);
-    const knee = new THREE.Group(); knee.position.y = -0.44; L.add(knee);
-    CAP(0.068, 0.24, o.shin || o.pants, 0, -0.17, 0, knee);
-    const shoe = new THREE.Mesh(roundBox(0.15, 0.085, 0.27), M(o.shoe || '#4a4a52')); shoe.position.set(0, -0.35, 0.045); shoe.castShadow = true; knee.add(shoe);
-    const sole = new THREE.Mesh(roundBox(0.156, 0.035, 0.28), M('#f4f1ea')); sole.position.set(0, -0.395, 0.045); knee.add(sole);
+    const L = new THREE.Group(); L.position.set(0.095 * s, -0.02, 0); hip.add(L);
+    SPH(0.098, o.pants, 0, -0.01, 0, L);
+    if (shorts) { TAPER(0.106, 0.094, 0.2, o.pants, 0, -0.1, 0, L); TAPER(0.088, 0.072, 0.22, skin, 0, -0.31, 0, L); }
+    else TAPER(0.1, 0.076, 0.41, o.pants, 0, -0.215, 0, L);
+    const knee = new THREE.Group(); knee.position.y = -0.43; L.add(knee);
+    const legC = o.shin || o.pants;
+    SPH(0.075, legC, 0, 0, 0, knee);
+    TAPER(0.074, 0.079, 0.1, legC, 0, -0.06, 0, knee);           // calf swell
+    TAPER(0.079, 0.05, 0.22, legC, 0, -0.22, 0, knee);
+    if (shorts) TAPER(0.054, 0.056, 0.05, '#f4f1ea', 0, -0.34, 0, knee); // socks
+    const shoeC = o.shoe || '#4a4a52';
+    const shoe = new THREE.Mesh(roundBox(0.125, 0.08, 0.22), M(shoeC)); shoe.position.set(0, -0.37, 0.025); shoe.castShadow = true; knee.add(shoe);
+    SPH(0.064, shoeC, 0, -0.375, 0.12, knee, 1, 0.62, 1.05);      // toe box
+    const sole = new THREE.Mesh(roundBox(0.135, 0.03, 0.29), M('#f4f1ea')); sole.position.set(0, -0.405, 0.045); knee.add(sole);
     L.userData.knee = knee; legs.push(L);
   }
   const torso = new THREE.Group(); hip.add(torso);
-  const chest = CAP(0.2, 0.26, o.shirt, 0, 0.33, 0, torso); chest.scale.set(1.15, 1, 0.78);
-  if (o.stripe) { const band = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.03, 8, 24), M(o.stripe)); band.rotation.x = Math.PI / 2; band.position.y = 0.42; band.scale.set(1.15, 0.78, 1); torso.add(band); }
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.025, 8, 18), M(o.stripe || o.shirt)); collar.rotation.x = Math.PI / 2; collar.position.y = 0.63; torso.add(collar);
-  CAP(0.06, 0.06, o.skin, 0, 0.66, 0, torso);
+  const chest = new THREE.Mesh(torsoGeometry(), M(shirt)); chest.position.y = 0.0; chest.scale.set(1.07, 1, 0.76); chest.castShadow = true; chest.receiveShadow = true; torso.add(chest);
+  if (o.stripe) { const band = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.025, 8, 26), M(o.stripe)); band.rotation.x = Math.PI / 2; band.position.y = 0.42; band.scale.set(1.03, 0.72, 1); torso.add(band); }
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.022, 8, 18), M(o.stripe || shirt)); collar.rotation.x = Math.PI / 2; collar.position.y = 0.6; torso.add(collar);
+  TAPER(0.05, 0.058, 0.11, skin, 0, 0.64, 0, torso);
+  // head
   const head = new THREE.Group(); head.position.y = 0.62; torso.add(head);
-  SPH(0.165, o.skin, 0, 0.2, 0, head, 1, 1.08, 1);
-  SPH(0.172, hair, 0, 0.245, -0.018, head, 1.03, 0.88, 1.03);
-  SPH(0.07, hair, 0, 0.33, 0.1, head, 1.6, 0.55, 0.9);
+  SPH(0.15, skin, 0, 0.215, -0.005, head, 1, 1.1, 1.05);
+  SPH(0.118, skin, 0, 0.14, 0.022, head, 1, 0.8, 1);             // jaw
   for (const s of [-1, 1]) {
-    SPH(0.038, o.skin, 0.163 * s, 0.19, -0.005, head, 0.6, 1, 1);
-    SPH(0.024, '#2a211c', 0.058 * s, 0.215, 0.148, head, 1, 1.2, 0.6, false);
-    SPH(0.008, '#ffffff', 0.052 * s, 0.226, 0.162, head, 1, 1, 1, false);
-    const brow = new THREE.Mesh(roundBox(0.055, 0.016, 0.02), M(hair)); brow.position.set(0.06 * s, 0.258, 0.155); brow.rotation.z = -0.12 * s; head.add(brow);
+    SPH(0.034, skin, 0.148 * s, 0.195, -0.005, head, 0.55, 1, 1);
+    SPH(0.024, '#fbfaf6', 0.052 * s, 0.212, 0.127, head, 1.15, 0.8, 0.55, false);
+    SPH(0.014, '#2a211c', 0.052 * s, 0.21, 0.14, head, 1, 1.05, 0.6, false);
+    const brow = new THREE.Mesh(roundBox(0.05, 0.014, 0.02), M(hair)); brow.position.set(0.054 * s, 0.245, 0.141); brow.rotation.z = -0.12 * s; head.add(brow);
   }
-  SPH(0.028, o.skin, 0, 0.175, 0.165, head, 1, 1.1, 1, false);
-  const mouth = new THREE.Mesh(roundBox(0.055, 0.012, 0.01), M('#8a4a3a')); mouth.position.set(0, 0.118, 0.158); head.add(mouth);
-  if (o.cap) { SPH(0.18, o.cap, 0, 0.26, 0, head, 1.03, 0.66, 1.03); const brim = new THREE.Mesh(roundBox(0.26, 0.022, 0.17), M(o.cap)); brim.position.set(0, 0.255, 0.19); head.add(brim); }
-  if (o.pony) { SPH(0.07, hair, 0, 0.27, -0.2, head); SPH(0.055, hair, 0, 0.16, -0.23, head, 1, 1.4, 1); }
-  if (o.mustache) { const mu = new THREE.Mesh(roundBox(0.11, 0.024, 0.02), M(hair)); mu.position.set(0, 0.142, 0.163); head.add(mu); }
+  SPH(0.024, skin, 0, 0.178, 0.152, head, 0.85, 1.25, 1.1, false);  // nose
+  const mouth = new THREE.Mesh(roundBox(0.05, 0.011, 0.01), M('#8a4a3a')); mouth.position.set(0, 0.118, 0.143); head.add(mouth);
+  if (o.cap) { SPH(0.163, o.cap, 0, 0.262, 0, head, 1.04, 0.62, 1.08); const brim = new THREE.Mesh(roundBox(0.24, 0.02, 0.16), M(o.cap)); brim.position.set(0, 0.255, 0.18); head.add(brim); }
+  else if (style === 'buzz') SPH(0.154, hair, 0, 0.235, -0.012, head, 1.01, 0.8, 1.05);
+  else {
+    SPH(0.158, hair, 0, 0.248, -0.016, head, 1.03, 0.84, 1.08);
+    SPH(0.058, hair, 0, 0.322, 0.085, head, 1.75, 0.5, 0.95);       // fringe
+    if (style === 'curly') for (let k = 0; k < 9; k++) { const a = k / 9 * TAU; SPH(0.05, hair, Math.cos(a) * 0.1, 0.33 + Math.sin(k * 1.7) * 0.02, Math.sin(a) * 0.1 - 0.02, head); }
+    if (style === 'wavy') { SPH(0.06, hair, -0.1, 0.3, -0.04, head); SPH(0.06, hair, 0.1, 0.3, -0.04, head); }
+  }
+  if (style === 'pony' || o.pony) { SPH(0.068, hair, 0, 0.27, -0.19, head); SPH(0.052, hair, 0, 0.16, -0.22, head, 1, 1.45, 1); }
+  if (o.mustache || o.beard) { const mu = new THREE.Mesh(roundBox(0.1, 0.022, 0.02), M(hair)); mu.position.set(0, 0.142, 0.15); head.add(mu); }
+  if (o.beard) SPH(0.112, hair, 0, 0.122, 0.03, head, 1.03, 0.72, 0.98);
+  // arms
   const arms = [], hands = [];
   for (const s of [-1, 1]) {
-    const A = new THREE.Group(); A.position.set(0.27 * s, 0.56, 0); torso.add(A);
+    const A = new THREE.Group(); A.position.set(0.26 * s, 0.53, 0); torso.add(A);
     SPH(0.082, sleeve, 0, 0, 0, A);
-    CAP(0.064, 0.2, sleeve, 0, -0.15, 0, A);
-    const E = new THREE.Group(); E.position.y = -0.3; E.rotation.x = -0.25; A.add(E);
-    CAP(0.054, 0.19, o.skin, 0, -0.13, 0, E);
-    hands.push(SPH(o.gloves ? 0.08 : 0.062, o.gloves || o.skin, 0, -0.31, 0.01, E));
+    const E = new THREE.Group(); E.position.y = -0.29; E.rotation.x = -0.25; A.add(E);
+    if (o.longSleeve) { TAPER(0.074, 0.062, 0.27, sleeve, 0, -0.14, 0, A); SPH(0.06, sleeve, 0, 0, 0, E); TAPER(0.06, 0.05, 0.2, sleeve, 0, -0.1, 0, E); TAPER(0.046, 0.044, 0.05, skin, 0, -0.22, 0, E); }
+    else { TAPER(0.086, 0.08, 0.14, sleeve, 0, -0.05, 0, A); TAPER(0.064, 0.056, 0.2, skin, 0, -0.18, 0, A); SPH(0.056, skin, 0, 0, 0, E); TAPER(0.058, 0.044, 0.22, skin, 0, -0.12, 0, E); }
+    const hc = o.gloves || skin, big = o.gloves ? 1.35 : 1;
+    hands.push(SPH(0.05 * big, hc, 0, -0.275, 0.008, E, 0.9, 1.15, 0.72));
+    SPH(0.021 * big, hc, -0.035 * s, -0.255, 0.03, E);              // thumb
     A.userData.elbow = E; arms.push(A);
   }
   return { g, hip, torso, head, legs, arms, hands, phase: rand(0, 6) };
